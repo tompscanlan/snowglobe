@@ -45,12 +45,9 @@ const run = (args) => {
   if (dry) return;
   if (spawnSync('docker', args, { stdio: 'inherit' }).status !== 0) throw new Error(`docker ${args[0]} failed`);
 };
-// An image two services run (a group host and its console) is built once.
-const images = new Set();
 for (const def of Object.values(JSON.parse(config.stdout).services)) {
   const name = def.image?.split(':')[0];
-  if (!def.build || !(name in PUBLISHED) || images.has(def.image)) continue;
-  images.add(def.image);
+  if (!def.build || !(name in PUBLISHED)) continue;
   const remote = `${registry}/${def.image}`;
   const args = Object.entries(def.build.args ?? {}).flatMap(([k, v]) => ['--build-arg', `${k}=${v}`]);
   run(['build', '-t', def.image, '-t', remote, '--label', `${SOURCE_LABEL}=${sourceHash(ROOT, name)}`, ...args, def.build.context]);

@@ -481,11 +481,17 @@ const ATGRP = {
 describe('snowglobe render: atgrp group hosts', () => {
   it('runs the host and its console from one image: stack/group-host\'s, unless the file names a checkout or an image', () => {
     const { compose } = render(ATGRP);
-    const stack = { build: './stack/group-host', image: base.tags['snowglobe-group-host'] };
-    for (const [name, source] of [['gh', stack], ['gh2', { build: { context: BUILD } }], ['gh3', { image: 'ghcr.io/example/group-host:1' }]] as const)
-      for (const s of [`grouphost-${name}`, `grouphost-${name}-console`]) {
-        expect({ build: compose.services[s].build, image: compose.services[s].image }, s).toEqual({ build: undefined, image: undefined, ...source });
-      }
+    const sources = {
+      gh: { build: './stack/group-host', image: base.tags['snowglobe-group-host'] },
+      gh2: { build: { context: BUILD }, image: '${COMPOSE_PROJECT_NAME}-grouphost-gh2' },
+      gh3: { build: undefined, image: 'ghcr.io/example/group-host:1' },
+    };
+    for (const [name, source] of Object.entries(sources)) {
+      const of = (s: string) => ({ build: compose.services[s].build, image: compose.services[s].image });
+      expect(of(`grouphost-${name}`), name).toEqual(source);
+      // Only the host builds it; the console runs the image by its name, so it is built once.
+      expect(of(`grouphost-${name}-console`), `${name}-console`).toEqual({ build: undefined, image: source.image });
+    }
     expect(compose.services['grouphost-gh'].command).toEqual(['group-host']);
     expect(compose.services['grouphost-gh-console'].command).toEqual(['node', '/app/build']);
     // The stack's image is tagged by its Dockerfile and patch, and published like the relay's.
@@ -535,7 +541,8 @@ describe('snowglobe render: atgrp group hosts', () => {
     expect(compose.services['relay-init-grouphosts'].depends_on['grouphost-gh']).toEqual({ condition: 'service_healthy' });
     expect(compose.services['relay-init'].depends_on).not.toHaveProperty('grouphost-gh');
     expect(env.SG_SERVICES.split(' ')).toEqual(expect.arrayContaining(['grouphost-gh', 'grouphost-gh-console', 'grouphost-gh-dns']));
-    // Only the one from a checkout is built by up every time; the stack's image is like the relay's.
+    // The group hosts up names when it builds: the one from a checkout. The stack's image is pulled
+    // where published, else built, as the relay's is.
     expect(env.SG_BUILDS).toBe('grouphost-gh2');
   });
 
@@ -548,11 +555,16 @@ describe('snowglobe render: atgrp group hosts', () => {
   const docker = spawnSync('docker', ['compose', 'version']).status === 0;
   it.skipIf(!docker)('writes an atgrp group host docker compose reads', () => {
     const dir = mkdtempSync(join(tmpdir(), 'snowglobe-render-'));
-    writeFileSync(join(dir, 'snowglobe.yml'), 'globe: mine\npds: [{name: alpha, image: spaces-alpha-20261124}]\ngrouphosts: [{name: gh, kind: atgrp}]\n');
+    writeFileSync(join(dir, 'snowglobe.yml'), `globe: mine\npds: [{name: alpha, image: spaces-alpha-20261124}]\ngrouphosts: [{name: gh, kind: atgrp}, {name: gh2, kind: atgrp, build: ${JSON.stringify(BUILD)}}]\n`);
     const r = spawnSync('node', [join(ROOT, 'bin/snowglobe.mjs'), 'render', join(dir, 'snowglobe.yml'), '--out', join(dir, 'out')], { encoding: 'utf8', env: inDir(dir) });
     expect(r.status, r.stderr).toBe(0);
-    const c = spawnSync('docker', ['compose', '-p', 'snowglobe-render-test', '--project-directory', ROOT, '-f', join(dir, 'out', 'compose.yml'), 'config', '-q'], { encoding: 'utf8', env: { ...process.env, ...SECRET_ENV } });
+    const c = spawnSync('docker', ['compose', '-p', 'snowglobe-render-test', '--project-directory', ROOT, '-f', join(dir, 'out', 'compose.yml'), 'config', '--format', 'json'], { encoding: 'utf8', env: { ...process.env, ...SECRET_ENV } });
     expect(c.status, c.stderr).toBe(0);
+    // The console runs the image the host builds from the checkout, by the name compose gives it.
+    const services = JSON.parse(c.stdout).services;
+    expect(services['grouphost-gh2'].image).toBe('snowglobe-render-test-grouphost-gh2');
+    expect(services['grouphost-gh2-console'].image).toBe('snowglobe-render-test-grouphost-gh2');
+    expect(services['grouphost-gh2-console'].build).toBeUndefined();
   });
 });
 
