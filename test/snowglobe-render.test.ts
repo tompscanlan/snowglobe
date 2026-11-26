@@ -451,6 +451,93 @@ describe('snowglobe render: group hosts', () => {
   });
 });
 
+// The Atmosphere Groups host: one built from stack/group-host, one from a checkout, one from an image.
+const ATGRP = {
+  ...THREE,
+  grouphosts: [
+    { name: 'gh', kind: 'atgrp' },
+    { name: 'gh2', kind: 'atgrp', build: BUILD },
+    { name: 'gh3', kind: 'atgrp', image: 'ghcr.io/example/group-host:1' },
+  ],
+};
+
+describe('snowglobe render: atgrp group hosts', () => {
+  it('runs the host and its console from one image: stack/group-host\'s, unless the file names a checkout or an image', () => {
+    const { compose } = render(ATGRP);
+    const stack = { build: './stack/group-host', image: base.tags['snowglobe-group-host'] };
+    for (const [name, source] of [['gh', stack], ['gh2', { build: { context: BUILD } }], ['gh3', { image: 'ghcr.io/example/group-host:1' }]] as const)
+      for (const s of [`grouphost-${name}`, `grouphost-${name}-console`]) {
+        expect({ build: compose.services[s].build, image: compose.services[s].image }, s).toEqual({ build: undefined, image: undefined, ...source });
+      }
+    expect(compose.services['grouphost-gh'].command).toEqual(['group-host']);
+    expect(compose.services['grouphost-gh-console'].command).toEqual(['node', '/app/build']);
+    // The stack's image is tagged by its Dockerfile and patch, and published like the relay's.
+    expect(base.tags['snowglobe-group-host']).toBe(`snowglobe-group-host:${contextHash(ROOT, 'stack/group-host', ['Dockerfile', 'private-network.patch'])}`);
+  });
+
+  it('runs the host in a DNS of its own, trusting the CA and reaching private addresses, on the globe\'s PLC and no rate limits', () => {
+    const { compose } = render(ATGRP);
+    const s = compose.services['grouphost-gh'];
+    expect(s.network_mode).toBe('service:grouphost-gh-dns');
+    expect(compose.services['grouphost-gh-dns']).toMatchObject({ image: base.tags['snowglobe-dns'], dns: ['127.0.0.1'], environment: { SG_DOMAIN: 'mine.test' } });
+    expect(s.environment).toEqual({
+      PORT: '2600',
+      PUBLIC_URL: 'https://gh.mine.test',
+      HANDLE_DOMAIN: '.gh.mine.test',
+      DATA_DIR: '/data',
+      PLC_URL: 'http://plc:2582',
+      HANDLE_RESOLVERS: 'well-known:https',
+      SIGNUP_PDS: 'https://alpha.mine.test',
+      RATE_LIMITS: 'off',
+      EXTRA_CA_CERTS: '/https/ca.crt',
+      PRIVATE_ADDRESSES: 'on',
+    });
+    expect(s.volumes).toEqual(['grouphost-gh-data:/data', '/state/snowglobe/ca/ca.crt:/https/ca.crt:ro']);
+    expect(compose.volumes).toHaveProperty('grouphost-gh-data');
+    expect(s.healthcheck.test.join(' ')).toContain('http://127.0.0.1:2600/xrpc/_health');
+    // The console is on the network, and asks the host where it listens.
+    const c = compose.services['grouphost-gh-console'];
+    expect(c.network_mode).toBeUndefined();
+    expect(c.environment).toMatchObject({ PORT: '2601', GROUP_HOST: 'http://grouphost-gh-dns:2600', ORIGIN: 'https://gh.mine.test' });
+    expect(c.depends_on).toEqual({ 'grouphost-gh': { condition: 'service_healthy' } });
+    const shared = Object.entries(compose.services).filter(([, x]: [string, any]) => x.network_mode).map(([n]) => n);
+    expect(shared.sort()).toEqual(['grouphost-gh', 'grouphost-gh2', 'grouphost-gh3', 'slingshot']);
+  });
+
+  it('sends the host\'s paths and every group\'s handle to the host, and the rest of its name to the console', () => {
+    const { files, compose, env } = render(ATGRP);
+    const conf = files['nginx/globe.conf'];
+    const gh = conf.slice(conf.indexOf('# gh: '), conf.indexOf('# gh2: '));
+    expect(gh).toContain('server_name gh.mine.test;\n    location / {\n        set $upstream http://grouphost-gh-console:2601;');
+    expect(gh).toContain('location ~ ^/(xrpc|oauth|\\.well-known|img)/ {\n        set $upstream http://grouphost-gh-dns:2600;');
+    expect(gh).toContain('server_name *.gh.mine.test;\n    location / {\n        set $upstream http://grouphost-gh-dns:2600;');
+    expect(files['nginx/page.inc']).toContain('set $gh_gh http://grouphost-gh-dns:2600;');
+    expect(files['leaf-names'].split('\n')).toEqual(expect.arrayContaining(['gh.mine.test', '*.gh.mine.test']));
+    expect(compose.services.nginx.networks.snowglobe.aliases).toContain('gh.mine.test');
+    expect(compose.services['relay-init'].environment.RELAY_HOSTS.split(' ')).toContain('gh.mine.test');
+    expect(compose.services['relay-init'].depends_on['grouphost-gh']).toEqual({ condition: 'service_healthy' });
+    expect(env.SG_SERVICES.split(' ')).toEqual(expect.arrayContaining(['grouphost-gh', 'grouphost-gh-console', 'grouphost-gh-dns']));
+    // Only the one from a checkout is built by up every time; the stack's image is like the relay's.
+    expect(env.SG_BUILDS).toBe('grouphost-gh2');
+  });
+
+  it('needs no source in the file or the environment', () => {
+    const { globe } = checkGlobe({ ...THREE, grouphosts: [{ name: 'gh', kind: 'atgrp' }] });
+    expect(withGroupHostSources(globe, {}).grouphosts).toEqual(globe.grouphosts);
+    expect(() => renderGlobe(globe, base, { stateDir: STATE })).not.toThrow();
+  });
+
+  const docker = spawnSync('docker', ['compose', 'version']).status === 0;
+  it.skipIf(!docker)('writes an atgrp group host docker compose reads', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'snowglobe-render-'));
+    writeFileSync(join(dir, 'snowglobe.yml'), 'globe: mine\npds: [{name: alpha, image: spaces-alpha-20261124}]\ngrouphosts: [{name: gh, kind: atgrp}]\n');
+    const r = spawnSync('node', [join(ROOT, 'bin/snowglobe.mjs'), 'render', join(dir, 'snowglobe.yml'), '--out', join(dir, 'out')], { encoding: 'utf8', env: inDir(dir) });
+    expect(r.status, r.stderr).toBe(0);
+    const c = spawnSync('docker', ['compose', '-p', 'snowglobe-render-test', '--project-directory', ROOT, '-f', join(dir, 'out', 'compose.yml'), 'config', '-q'], { encoding: 'utf8', env: { ...process.env, ...SECRET_ENV } });
+    expect(c.status, c.stderr).toBe(0);
+  });
+});
+
 describe('stack/https/app-names.cjs', () => {
   // SG_APP_PROXY_HOST stands in for nginx, so the lookup answers here.
   const lookup = (name: string, env: object) =>

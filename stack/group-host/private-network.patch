@@ -1,0 +1,178 @@
+diff --git a/crates/group-host/src/authority.rs b/crates/group-host/src/authority.rs
+index 620194e..37742c5 100644
+--- a/crates/group-host/src/authority.rs
++++ b/crates/group-host/src/authority.rs
+@@ -162,6 +162,8 @@ struct Syncers {
+     store: Store,
+     /// Whether the host is on http, and so may call endpoints on http.
+     http_here: bool,
++    /// Whether it may call endpoints at private addresses on https.
++    private: bool,
+ }
+ 
+ impl Syncers {
+@@ -172,7 +174,7 @@ impl Syncers {
+             to.endpoint.trim_end_matches('/')
+         );
+         // The syncer chose the endpoint: it is fetched as one not trusted.
+-        let Ok((client, at)) = pinned_client(&url, self.http_here).await else {
++        let Ok((client, at)) = pinned_client(&url, self.http_here, self.private).await else {
+             return Delivery::Retry;
+         };
+         let body = json!({"space": space, "token": to.token, "update": update});
+@@ -424,6 +426,7 @@ impl Host {
+         Syncers {
+             store: self.store.clone(),
+             http_here: self.config.public_url.starts_with("http://"),
++            private: self.config.private_addresses,
+         }
+     }
+ 
+diff --git a/crates/group-host/src/config.rs b/crates/group-host/src/config.rs
+index 421cd3c..97feb50 100644
+--- a/crates/group-host/src/config.rs
++++ b/crates/group-host/src/config.rs
+@@ -74,6 +74,14 @@ pub struct Config {
+     /// Whether it limits how much one caller asks, `RATE_LIMITS`: `on`,
+     /// unless `off` (`limits`).
+     pub rate_limits: bool,
++    /// A PEM file of certificate authorities its requests to other servers
++    /// trust beside the public ones, `EXTRA_CA_CERTS`, read as it starts
++    /// ([`crate::trust`]): for a network of test servers with its own.
++    pub extra_ca_certs: Option<PathBuf>,
++    /// Whether it fetches from private addresses on https too,
++    /// `PRIVATE_ADDRESSES`: `off`, unless `on`, for a network of test
++    /// servers. On http, it always does.
++    pub private_addresses: bool,
+ }
+ 
+ /// The service that finds anyone on the network by what is typed.
+@@ -179,6 +187,12 @@ impl Config {
+             Some("off") => false,
+             Some(other) => bail!("RATE_LIMITS is on or off, not {other}"),
+         };
++        let extra_ca_certs = var("EXTRA_CA_CERTS").map(PathBuf::from);
++        let private_addresses = match var("PRIVATE_ADDRESSES").as_deref() {
++            None | Some("off") => false,
++            Some("on") => true,
++            Some(other) => bail!("PRIVATE_ADDRESSES is on or off, not {other}"),
++        };
+         Ok(Config {
+             port,
+             public_url,
+@@ -200,6 +214,8 @@ impl Config {
+             logs_keep,
+             domain_check_at,
+             rate_limits,
++            extra_ca_certs,
++            private_addresses,
+         })
+     }
+ 
+diff --git a/crates/group-host/src/lib.rs b/crates/group-host/src/lib.rs
+index 18561d7..378a794 100644
+--- a/crates/group-host/src/lib.rs
++++ b/crates/group-host/src/lib.rs
+@@ -64,6 +64,7 @@ pub mod time;
+ pub mod token_writes;
+ pub mod xrpc;
+ 
++use anyhow::Context;
+ use axum::extract::Path;
+ use axum::routing::{get, post};
+ use axum::{Json, Router};
+@@ -152,11 +153,39 @@ pub const OUTGOING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
+ /// message completed"), so the host drops one before that can happen.
+ pub const IDLE_AT_MOST: std::time::Duration = std::time::Duration::from_secs(4);
+ 
++/// The certificate authorities every client of the host's trusts beside
++/// the public ones: none, until [`trust`] names them.
++static EXTRA_ROOTS: std::sync::RwLock<Vec<reqwest::Certificate>> =
++    std::sync::RwLock::new(Vec::new());
++
++/// Has every client built from now on trust the certificate authorities
++/// in the PEM file `config` names, `EXTRA_CA_CERTS`, beside the public
++/// ones; refused unless it holds at least one, each a certificate.
++pub fn trust(config: &Config) -> anyhow::Result<()> {
++    let Some(path) = &config.extra_ca_certs else {
++        return Ok(());
++    };
++    let named = path.display();
++    let refused = || format!("EXTRA_CA_CERTS is no PEM file of certificates: {named}");
++    let pem = std::fs::read(path).with_context(refused)?;
++    let roots = reqwest::Certificate::from_pem_bundle(&pem).with_context(refused)?;
++    let add = reqwest::ClientBuilder::add_root_certificate;
++    let checked = roots.iter().cloned().fold(reqwest::Client::builder(), add);
++    if roots.is_empty() || checked.build().is_err() {
++        anyhow::bail!(refused());
++    }
++    *EXTRA_ROOTS.write().expect("not poisoned") = roots;
++    Ok(())
++}
++
+ /// What every client of the host's for other servers is built from.
+ pub fn client_builder() -> reqwest::ClientBuilder {
+-    reqwest::Client::builder()
++    let builder = reqwest::Client::builder()
+         .timeout(OUTGOING_TIMEOUT)
+-        .pool_idle_timeout(IDLE_AT_MOST)
++        .pool_idle_timeout(IDLE_AT_MOST);
++    let roots = EXTRA_ROOTS.read().expect("not poisoned").clone();
++    let add = reqwest::ClientBuilder::add_root_certificate;
++    roots.into_iter().fold(builder, add)
+ }
+ 
+ /// A client for the host's requests to other servers.
+@@ -656,8 +685,10 @@ pub const USAGE: &str = "usage: group-host                 serve, as the environ
+                                   address the environment names now";
+ 
+ /// What `group-host` does with `args` (without its own name): serves,
+-/// or moves the host, printing what it did.
++/// or moves the host, printing what it did, trusting the certificate
++/// authorities `EXTRA_CA_CERTS` names ([`trust`]).
+ pub async fn run(args: &[String], config: Config) -> anyhow::Result<()> {
++    trust(&config)?;
+     let args: Vec<&str> = args.iter().map(String::as_str).collect();
+     match args.as_slice() {
+         [] => serve(config).await,
+diff --git a/crates/group-host/src/oauth_clients.rs b/crates/group-host/src/oauth_clients.rs
+index c8423e3..96e75b6 100644
+--- a/crates/group-host/src/oauth_clients.rs
++++ b/crates/group-host/src/oauth_clients.rs
+@@ -188,10 +188,12 @@ fn validate(id: &str, metadata: Value) -> Result<Value, OAuthError> {
+ /// http at any address, with `http_here`, as on a network of test servers
+ /// whose host is on http itself), and the URL. Its connections go to the
+ /// addresses checked, so a name that resolves elsewhere a moment later is
+-/// not followed there, and it follows no redirect.
++/// not followed there, and it follows no redirect. With `private`, as on a
++/// network of test servers on https, an https URL may be at any address.
+ pub(crate) async fn pinned_client(
+     url: &str,
+     http_here: bool,
++    private: bool,
+ ) -> Result<(reqwest::Client, Url), String> {
+     let at = Url::parse(url).map_err(|_| format!("{url} is not a URL"))?;
+     let scheme_ok = at.scheme() == "https" || (http_here && at.scheme() == "http");
+@@ -202,7 +204,7 @@ pub(crate) async fn pinned_client(
+     let port = at.port_or_known_default().unwrap_or_default();
+     let found = tokio::net::lookup_host(format!("{host}:{port}")).await;
+     let addrs: Vec<SocketAddr> = found.map_err(|e| format!("{url}: {e}"))?.collect();
+-    if !http_here && !addrs.iter().all(|a| public(a.ip())) {
++    if !(http_here || private) && !addrs.iter().all(|a| public(a.ip())) {
+         return Err(format!("{url} is not at a public address"));
+     }
+     let pinned = crate::client_builder()
+@@ -305,9 +307,11 @@ impl Host {
+     }
+ 
+     /// A client for requests to `url`, as [`pinned_client`] makes one, and
+-    /// the URL: http allowed while this host is on http itself.
++    /// the URL: http allowed while this host is on http itself, and
++    /// private addresses with `PRIVATE_ADDRESSES`.
+     pub(crate) async fn pinned(&self, url: &str) -> Result<(reqwest::Client, Url), String> {
+-        pinned_client(url, self.config.public_url.starts_with("http://")).await
++        let http_here = self.config.public_url.starts_with("http://");
++        pinned_client(url, http_here, self.config.private_addresses).await
+     }
+ 
+     /// The JSON object at `url`, fetched by a [`Host::pinned`] client.

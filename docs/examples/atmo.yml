@@ -3,10 +3,14 @@
 # two accounts. Copy it to snowglobe.yml, beside the snowglobe checkout's bin/. The tests and the
 # smoke run use it too, so a change here shows up there.
 #
-# To add a group host (the opensocial.group proposal's atproto-group-host, built from a checkout):
+# To add a group host: the Atmosphere Groups host (group-host), built here, whose members' spaces
+# want alpha on image: spaces-alpha-20261124 and the spec's org.atgrp lexicons in lexicons.publish;
+# or the opensocial.group proposal's atproto-group-host, built from a checkout:
 #
 # grouphosts:
 #   - name: gh                         # https://gh.snowglobe.local.snowglobe.at, handles <group>.gh.snowglobe.local.snowglobe.at
+#     kind: atgrp
+#   - name: os
 #     kind: opensocial
 #     build: ../atproto-group-host     # a folder with a Dockerfile, from this file's folder
 

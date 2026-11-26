@@ -4,6 +4,18 @@ Changes to the default stack that existing setups will notice:
 
 ## Unreleased
 
+- **A second kind of group host, `kind: atgrp`: [group-host](https://github.com/bluesky-social/group-host),
+  the Atmosphere Groups host.** It runs as its release does, the host and its console from one image,
+  at `https://<name>.<domain>`, with its groups' handles under that name. Its released image trusts
+  only the public certificate authorities and refuses private addresses over https, so it can sign
+  nobody in on a snowglobe: `up` builds its 0.4.0 release with `stack/group-host/private-network.patch`,
+  which adds two settings for that, off unless set, unless the file names `build:` or `image:`. The
+  image is published with the relay's, so a release of snowglobe pulls it instead of a few minutes of
+  Rust. The host runs in a DNS container of its own, `grouphost-<name>-dns`, as Slingshot does. Its
+  members' spaces want a PDS on `spaces-alpha-20261124`, and the spec's `org.atgrp` lexicons in
+  `lexicons.publish`. Beside an atgrp group host `gh`, another can no longer be named `gh-console` or
+  `gh-dns`.
+
 - **A short name for the spaces alpha of 2026-11-24: `image: spaces-alpha-20261124`.** It is
   atproto's `1f510f8e`, the build `@atproto/space` 0.0.0-spaces-alpha-20261124235736 was published
   from, pinned by digest: spaces named `at:space/…`, `authorizeSpaceSync`, and signed space requests.

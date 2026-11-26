@@ -240,6 +240,15 @@ describe('the rules behind the check', () => {
     for (const kind of ['other', 'constructor', ['opensocial'], { toString: 'typo' }, undefined])
       expect(whereOf(ok({ grouphosts: [{ name: 'gh', kind }] })), JSON.stringify(kind)).toEqual(['grouphosts[0].kind']);
     expect(whereOf(ok({ grouphosts: [{ name: 'gh', kind: 'opensocial' }] }))).toEqual([]);
+    expect(whereOf(ok({ grouphosts: [{ name: 'gh', kind: 'atgrp' }] }))).toEqual([]);
+  });
+
+  it('keeps an atgrp group host\'s console and DNS from another group host\'s name', () => {
+    const hosts = (kind: string, other: string) => ok({ grouphosts: [{ name: 'gh', kind }, { name: other, kind: 'opensocial' }] });
+    expect(whereOf(hosts('atgrp', 'gh-console'))).toEqual(['grouphosts[1].name']);
+    expect(whereOf(hosts('atgrp', 'gh-dns'))).toEqual(['grouphosts[1].name']);
+    expect(whereOf(hosts('atgrp', 'gh-web'))).toEqual([]);
+    expect(whereOf(hosts('opensocial', 'gh-dns'))).toEqual([]);
   });
 
   it('takes a group host\'s image or its build folder, a folder with a Dockerfile beside the file, not both', () => {
