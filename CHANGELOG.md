@@ -25,7 +25,8 @@ Changes to the default stack that existing setups will notice:
   at its group host never reached the relay, Jetstream or anything indexing from them, and an app
   that lists groups from Jetstream never saw one. Group hosts serve `subscribeRepos` like a PDS;
   `relay-init` now waits for each to be healthy and crawls it after the PDSes, and the collection
-  directory crawls them too.
+  directory crawls them too. `up` restarts the relay when a group host started after it, as it does
+  for a PDS.
 
 ## v0.7.0 (2026-11-08)
 

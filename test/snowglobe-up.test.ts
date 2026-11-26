@@ -9,7 +9,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 // @ts-expect-error: a plain .mjs module, without types
-import { accountPrefixes, bindFilesToRemove, endingClash, mergeRoutes, nameFails, nameFinding, startedAfterRelay, tryName } from '../lib/up.mjs';
+import { accountPrefixes, bindFilesToRemove, endingClash, mergeRoutes, nameFails, nameFinding, relayDials, startedAfterRelay, tryName } from '../lib/up.mjs';
 
 const ROOT = join(__dirname, '..');
 const FOUR = join(ROOT, 'test/snowglobe/four.yml');
@@ -35,6 +35,16 @@ describe('what up writes', () => {
     // A rerun that changed nothing, a container that never started, a service with no container.
     expect(startedAfterRelay(relay, { 'pds-main': [before], nginx: [before] })).toBeNull();
     expect(startedAfterRelay(relay, { 'pds-main': ['0001-01-01T00:00:00Z'], nginx: [] })).toBeNull();
+  });
+
+  it('counts each group host among what the relay dials, as it crawls them like a PDS', () => {
+    const dials = relayDials({ pds: ['alpha', 'beta'], grouphosts: ['gh', 'os'] });
+    expect(dials.sort()).toEqual(['grouphost-gh', 'grouphost-os', 'nginx', 'pds-alpha', 'pds-beta']);
+    expect(relayDials({ pds: ['alpha'], grouphosts: [] })).toEqual(['pds-alpha', 'nginx']);
+    // A group host that came back after the relay started restarts it.
+    const relay = ['2026-11-26T10:00:00.000000000Z'];
+    const times = Object.fromEntries(dials.map((s) => [s, ['2026-11-26T09:59:00.000000000Z']]));
+    expect(startedAfterRelay(relay, { ...times, 'grouphost-gh': ['2026-11-26T10:00:01.000000000Z'] })).toBe('grouphost-gh');
   });
 });
 
