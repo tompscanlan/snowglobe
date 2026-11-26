@@ -518,6 +518,9 @@ describe('snowglobe render: atgrp group hosts', () => {
     expect(s.volumes).toEqual(['grouphost-gh-data:/data', '/state/snowglobe/ca/ca.crt:/https/ca.crt:ro']);
     expect(compose.volumes).toHaveProperty('grouphost-gh-data');
     expect(s.healthcheck.test.join(' ')).toContain('http://127.0.0.1:2600/xrpc/_health');
+    // A first start gets the minute the release gives it before a failed check counts.
+    expect(s.healthcheck.start_period).toBe('60s');
+    expect(compose.services['grouphost-gh-console'].healthcheck.start_period).toBe('60s');
     // The console is on the network, and asks the host where it listens.
     const c = compose.services['grouphost-gh-console'];
     expect(c.network_mode).toBeUndefined();

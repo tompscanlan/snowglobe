@@ -193,7 +193,9 @@ the host's methods, OAuth and `/.well-known/` under the same name. The released 
 anyone in on a snowglobe, so `up` builds that release with a small patch (`stack/group-host/`,
 [An atgrp group host, built locally](how-it-works.md#an-atgrp-group-host-built-locally)), or pulls the
 build snowglobe publishes. `build:` (a checkout, with its own Dockerfile) or `image:` runs another
-build, which must take the patch's two settings. Its groups' spaces need members on a PDS of the
+build, which must take the patch's two settings and, as the release's image does, have `group-host`
+and `node` on its path and the console at `/app/build`: snowglobe runs the two with those, and both
+health checks ask with node. Its groups' spaces need members on a PDS of the
 spaces alpha it was made for, `image: spaces-alpha-20261124`, and members' PDSes learn its space types
 and permission sets from the lexicon authority: put the spec's `lexicons/org/atgrp/` in your
 `lexicons.publish` folder. Anyone may start a group. An app proxies a member's call to it at
