@@ -10,15 +10,16 @@ Changes to the default stack that existing setups will notice:
   only the public certificate authorities and refuses private addresses over https, so it can sign
   nobody in on a snowglobe: `up` builds its 0.4.0 release with `stack/group-host/private-network.patch`,
   which adds two settings for that, off unless set, unless the file names `build:` or `image:`. The
-  image is published with the relay's, so a release of snowglobe pulls it instead of a few minutes of
-  Rust. The host runs in a DNS container of its own, `grouphost-<name>-dns`, as Slingshot does. Its
-  members' spaces want a PDS on `spaces-alpha-20261124`, and the spec's `org.atgrp` lexicons in
-  `lexicons.publish`. Beside an atgrp group host `gh`, another can no longer be named `gh-console` or
-  `gh-dns`.
+  images workflow publishes that image with the relay's, and `up` pulls it where the registry has one
+  built from the same files; where it has none, `up` builds it, which compiles Rust. The host runs in
+  a DNS container of its own, `grouphost-<name>-dns`, as Slingshot does. Its members' spaces want a
+  PDS on `spaces-alpha-20261124`, and the spec's `org.atgrp` lexicons in `lexicons.publish`. Beside
+  an atgrp group host `gh`, another can no longer be named `gh-console` or `gh-dns`.
 
 - **A short name for the spaces alpha of 2026-11-24: `image: spaces-alpha-20261124`.** It is
-  atproto's `1f510f8e`, the build `@atproto/space` 0.0.0-spaces-alpha-20261124235736 was published
-  from, pinned by digest: spaces named `at:space/…`, `authorizeSpaceSync`, and signed space requests.
+  atproto's `1f510f8e` (the revision its image's label names), built the same minute as
+  `@atproto/space` 0.0.0-spaces-alpha-20261124235736, pinned by digest: spaces named `at:space/…`,
+  `authorizeSpaceSync`, and signed space requests.
   `spaces-alpha` stays the alpha of 2026-10-01, so a file that names it runs what it ran before.
 
 - **The relay crawls every group host too.** `relay-init` added only the PDSes, so a group's writes

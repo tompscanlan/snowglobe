@@ -102,8 +102,8 @@ the released image signs nobody in. `stack/group-host/Dockerfile` builds the rel
 `EXTRA_CA_CERTS`, a PEM file of certificate authorities it trusts beside the public ones, and
 `PRIVATE_ADDRESSES=on`. It copies the two programs into the release's image, which supplies the
 console. The build needs GitHub, crates.io and knotless.dev (the registry of the atproto crate it
-uses), and Docker's disk for a few minutes of Rust; the image is published with the relay's, so `up`
-pulls it where snowglobe has published one.
+uses), and compiles Rust. `scripts/publish-images.mjs` publishes the image with the relay's, and `up`
+pulls it where the registry has one built from the same files, else builds it.
 
 The host and its console run from that image as `grouphost-<name>` (port 2600) and
 `grouphost-<name>-console` (2601). At `<name>.<domain>` nginx sends `/xrpc/`, `/oauth/`,
@@ -113,6 +113,6 @@ which the Node preload that sends a PDS's lookups to nginx does not reach, so, l
 in the network namespace of a dnsmasq, `grouphost-<name>-dns`, that answers nginx's address for every
 name under the domain, and nginx reaches it as `grouphost-<name>-dns:2600`. It publishes its groups to
 the snowglobe's PLC, resolves a handle at its own name (`HANDLE_RESOLVERS=well-known:https`), sends
-someone with no account to the PDS init seeds, and has no rate limits, since every request comes from
-nginx. It tells no relay of news; `relay-init-grouphosts` has the relay crawl it like a PDS. To recreate
+someone with no account to the PDS init seeds, and has no rate limits: a test network wants none. It
+tells no relay of news; `relay-init-grouphosts` has the relay crawl it like a PDS. To recreate
 `grouphost-<name>-dns`, recreate the host with it.
