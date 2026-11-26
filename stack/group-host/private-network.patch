@@ -29,7 +29,7 @@ index 620194e..37742c5 100644
      }
  
 diff --git a/crates/group-host/src/config.rs b/crates/group-host/src/config.rs
-index 421cd3c..97feb50 100644
+index 421cd3c..e23d0cf 100644
 --- a/crates/group-host/src/config.rs
 +++ b/crates/group-host/src/config.rs
 @@ -74,6 +74,14 @@ pub struct Config {
@@ -47,11 +47,14 @@ index 421cd3c..97feb50 100644
  }
  
  /// The service that finds anyone on the network by what is typed.
-@@ -179,6 +187,12 @@ impl Config {
+@@ -179,6 +187,15 @@ impl Config {
              Some("off") => false,
              Some(other) => bail!("RATE_LIMITS is on or off, not {other}"),
          };
-+        let extra_ca_certs = var("EXTRA_CA_CERTS").map(PathBuf::from);
++        // Empty, as a compose file passes one left unset, it names none.
++        let extra_ca_certs = var("EXTRA_CA_CERTS")
++            .filter(|path| !path.is_empty())
++            .map(PathBuf::from);
 +        let private_addresses = match var("PRIVATE_ADDRESSES").as_deref() {
 +            None | Some("off") => false,
 +            Some("on") => true,
@@ -60,7 +63,7 @@ index 421cd3c..97feb50 100644
          Ok(Config {
              port,
              public_url,
-@@ -200,6 +214,8 @@ impl Config {
+@@ -200,6 +217,8 @@ impl Config {
              logs_keep,
              domain_check_at,
              rate_limits,
