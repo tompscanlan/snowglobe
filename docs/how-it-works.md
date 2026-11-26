@@ -28,10 +28,14 @@
   its crawl refuses private addresses too, and one so its crawl reads its own rate limit, without
   which it stalls after the first page. Only that path reaches it; its admin API stays on the
   compose network. It reads the relay's firehose from its first start, and `relay-init` has it
-  crawl each PDS and group host, so an account that wrote before it started is listed too.
-  `relay-init` gives every PDS and group host to the relay first and never waits on
-  `collectiondir`, so a directory that is down leaves the relay, Jetstream and Tap as they were.
-  A group host is crawled like a PDS: its groups' writes reach Jetstream only through the relay.
+  crawl each PDS, so an account that wrote before it started is listed too. `relay-init` gives
+  every PDS to the relay first and never waits on `collectiondir`, so a directory that is down
+  leaves the relay, Jetstream and Tap as they were.
+- **The relay crawls each group host as it does a PDS.** A group's writes reach Jetstream only
+  through the relay. `relay-init-grouphosts`, a one-shot of its own, waits for each group host to be
+  healthy, then has the relay and `collectiondir` crawl it. `relay-init` waits for no group host, so
+  one that is slow to start, or never healthy, holds up no PDS's crawl. A crawl the relay refuses for
+  a group host is logged and does not fail `up`; one it refuses for a PDS does.
 - **Tap runs in the DNS container's network** (`tap-dns`), whose DNS answers every name under the
   domain with nginx. That is how Tap reaches an app's https name to send it events, and checks a
   handle (`alice.<domain>`) at its own name. Tap's port is published on the snowglobe's address, `SG_BIND`, at `<SG_TAP_PORT>` (2480)
@@ -110,5 +114,5 @@ in the network namespace of a dnsmasq, `grouphost-<name>-dns`, that answers ngin
 name under the domain, and nginx reaches it as `grouphost-<name>-dns:2600`. It publishes its groups to
 the snowglobe's PLC, resolves a handle at its own name (`HANDLE_RESOLVERS=well-known:https`), sends
 someone with no account to the PDS init seeds, and has no rate limits, since every request comes from
-nginx. It tells no relay of news; `relay-init` has the relay crawl it like a PDS. To recreate
+nginx. It tells no relay of news; `relay-init-grouphosts` has the relay crawl it like a PDS. To recreate
 `grouphost-<name>-dns`, recreate the host with it.

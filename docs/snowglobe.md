@@ -302,11 +302,12 @@ keeps both, and so does a `down -v` that fails. If Docker cannot say whether a s
 `up` stops before it saves any secret; start Docker and run it again.
 
 `snowglobe up` is safe to rerun; a rerun leaves the running services as they are, and only the
-one-shot `init` and `relay-init` run again. A rerun on a changed file stops what the file no longer
-runs. When a PDS or a group host, or nginx in front of them, started after the relay did, `up`
-restarts the relay before it returns: a relay that was running when a PDS went away can wait a long
-time before it redials it, so what the PDS writes meanwhile comes through late, or not for minutes,
-and the same goes for a group host, which the relay crawls like a PDS. A first `up`
+one-shots `init` and `relay-init` (and `relay-init-grouphosts`, with group hosts) run again. A
+rerun on a changed file stops what the file no longer runs. When a PDS or a group host, or nginx in
+front of them, started after the relay did, `up` restarts the relay before it returns: a relay that
+was running when a PDS went away can wait a long time before it redials it, so what the PDS writes
+meanwhile comes through late, or not for minutes, and the same goes for a group host, which the
+relay crawls like a PDS. A first `up`
 starts the PDSes twice (below), so it restarts the relay once, and a rerun brings it back to a PDS
 that restarted. It refuses a PDS named for a handle ending an app
 claimed with `snowglobe app`, before it writes anything. It makes the leaf certificate if there is

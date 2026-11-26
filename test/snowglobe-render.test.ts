@@ -144,9 +144,9 @@ describe('snowglobe render', () => {
     );
   });
 
-  // relay-init's script, run by sh with a curl that logs each URL and fails the ones the shell
-  // pattern `fail` matches.
-  function runRelayInit(fail: string) {
+  // relay-init's script (or another one-shot's of the same shape), run by sh with a curl that logs
+  // each URL and fails the ones the shell pattern `fail` matches.
+  function runRelayInit(fail: string, service = 'relay-init', doc: object = FOUR) {
     const dir = mkdtempSync(join(tmpdir(), 'relay-init-'));
     const log = join(dir, 'calls');
     writeFileSync(join(dir, 'apk'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
@@ -155,7 +155,7 @@ describe('snowglobe render', () => {
       `#!/bin/sh\nfor a; do u="$a"; done\necho "$u" >> "${log}"\ncase "$u" in ${fail}) exit 22;; esac\nexit 0\n`,
       { mode: 0o755 },
     );
-    const script = render(FOUR).compose.services['relay-init'].command[1].replaceAll('$$', '$');
+    const script = render(doc).compose.services[service].command[1].replaceAll('$$', '$');
     const r = spawnSync('/bin/sh', ['-c', script], {
       encoding: 'utf8',
       env: { PATH: `${dir}:${process.env.PATH}`, RELAY_ADMIN_PASSWORD: 'r', COLLECTIONDIR_ADMIN_TOKEN: 'c', RELAY_HOSTS: 'a.test b.test c.test' },
@@ -175,6 +175,17 @@ describe('snowglobe render', () => {
     expect(status).toBe(0);
     expect(calls.filter((u) => u === 'http://relay:2470/admin/pds/requestCrawl')).toHaveLength(3);
     expect(calls.filter((u) => u.includes('/admin/pds/requestCrawl') && u.includes('collectiondir'))).toHaveLength(0);
+  });
+
+  it('stops at a PDS the relay refuses, but only logs a group host it refuses and goes on to the next', () => {
+    const relay = 'http://relay:2470/admin/pds/requestCrawl';
+    const pds = runRelayInit('*relay:2470/admin*');
+    expect(pds.status).not.toBe(0);
+    expect(pds.calls.filter((u) => u === relay)).toHaveLength(1);
+    const gh = runRelayInit('*relay:2470/admin*', 'relay-init-grouphosts', GH);
+    expect(gh.status).toBe(0);
+    expect(gh.calls.filter((u) => u === relay)).toHaveLength(3);
+    expect(gh.calls.filter((u) => u === 'http://collectiondir:2510/admin/pds/requestCrawl')).toHaveLength(3);
   });
 
   it('routes each PDS\'s name and handles to its service, and puts both on the leaf', () => {
@@ -382,15 +393,21 @@ describe('snowglobe render: group hosts', () => {
     }
   });
 
-  it('has the relay crawl each one after the PDSes, once it is healthy', () => {
-    const { compose } = render(GH);
+  it('has the relay crawl each one once it is healthy, in a one-shot the PDSes\' crawl does not wait for', () => {
+    const healthy = { condition: 'service_healthy' };
+    const { compose, env } = render(GH);
     const init = compose.services['relay-init'];
-    expect(init.environment.RELAY_HOSTS.split(' ')).toEqual([
-      ...GH.pds.map((p) => `${p.name}.mine.test`),
-      'gh.mine.test',
-      'gh2.mine.test',
-    ]);
-    expect(init.depends_on).toMatchObject({ 'grouphost-gh': { condition: 'service_healthy' }, 'grouphost-gh2': { condition: 'service_healthy' } });
+    expect(init.environment.RELAY_HOSTS.split(' ')).toEqual(GH.pds.map((p) => `${p.name}.mine.test`));
+    expect(init.depends_on).toEqual({ relay: healthy, nginx: healthy, 'pds-alpha': healthy, 'pds-regular': healthy, 'pds-prod': healthy });
+    const gh = compose.services['relay-init-grouphosts'];
+    expect(gh.environment.RELAY_HOSTS.split(' ')).toEqual(['gh.mine.test', 'gh2.mine.test']);
+    expect(gh.depends_on).toEqual({ relay: healthy, nginx: healthy, 'grouphost-gh': healthy, 'grouphost-gh2': healthy });
+    expect(gh.command[1]).toContain('http://collectiondir:2510/admin/pds/requestCrawl');
+    expect(env.SG_ONESHOTS).toBe('init relay-init relay-init-grouphosts');
+    // With no relay, nothing crawls them.
+    const solo = render({ ...GH, pds: [PDS('solo')], services: { jetstream: false, slingshot: false } });
+    expect(solo.compose.services).not.toHaveProperty('relay-init-grouphosts');
+    expect(solo.env.SG_ONESHOTS).toBe('init');
   });
 
   it('gives each one its nginx server, certificate names, page row, health and group list', () => {
@@ -514,8 +531,9 @@ describe('snowglobe render: atgrp group hosts', () => {
     expect(files['nginx/page.inc']).toContain('set $gh_gh http://grouphost-gh-dns:2600;');
     expect(files['leaf-names'].split('\n')).toEqual(expect.arrayContaining(['gh.mine.test', '*.gh.mine.test']));
     expect(compose.services.nginx.networks.snowglobe.aliases).toContain('gh.mine.test');
-    expect(compose.services['relay-init'].environment.RELAY_HOSTS.split(' ')).toContain('gh.mine.test');
-    expect(compose.services['relay-init'].depends_on['grouphost-gh']).toEqual({ condition: 'service_healthy' });
+    expect(compose.services['relay-init-grouphosts'].environment.RELAY_HOSTS.split(' ')).toContain('gh.mine.test');
+    expect(compose.services['relay-init-grouphosts'].depends_on['grouphost-gh']).toEqual({ condition: 'service_healthy' });
+    expect(compose.services['relay-init'].depends_on).not.toHaveProperty('grouphost-gh');
     expect(env.SG_SERVICES.split(' ')).toEqual(expect.arrayContaining(['grouphost-gh', 'grouphost-gh-console', 'grouphost-gh-dns']));
     // Only the one from a checkout is built by up every time; the stack's image is like the relay's.
     expect(env.SG_BUILDS).toBe('grouphost-gh2');
