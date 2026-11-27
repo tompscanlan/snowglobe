@@ -13,9 +13,9 @@
 # relay's does in relay/Dockerfile. The build needs no apt: only GitHub, crates.io and the atproto
 # crate's own registry at knotless.dev (the group host's .cargo/config.toml).
 
-# The release's commit (0.4.0). The image below is that release's, pinned by digest, as a tag can
+# The release's commit (0.6.0). The image below is that release's, pinned by digest, as a tag can
 # move; its org.opencontainers.image.revision label is this commit.
-ARG GROUP_HOST_COMMIT=24590b57c0aabaaeb026f42b0367029c8da98dc6
+ARG GROUP_HOST_COMMIT=3b37a075c7c5125be6bff7f2c519a0415ad0deda
 
 # The toolchain the release's own image is built with.
 FROM rust:1.100-bookworm AS build
@@ -35,5 +35,5 @@ RUN cargo build --profile deploy --locked -p group-host --bin group-host -p atgr
  && cp target/deploy/group-host target/deploy/atgrp / \
  && rm -rf target /usr/local/cargo/registry
 
-FROM ghcr.io/bluesky-social/group-host:0.4.0@sha256:5cd83d16845183ebbd040a61af9829788584e9bd8a2e9d21210cfe5f773adbf5
+FROM ghcr.io/bluesky-social/group-host:0.6.0@sha256:f15a9d342bcd88095413e9eec22871043ecc3549b54201ace3faed91c5ed7179
 COPY --from=build /group-host /atgrp /usr/local/bin/

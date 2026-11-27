@@ -29,10 +29,10 @@ index 620194e..37742c5 100644
      }
  
 diff --git a/crates/group-host/src/config.rs b/crates/group-host/src/config.rs
-index 421cd3c..e23d0cf 100644
+index a59d4d6..73c1d44 100644
 --- a/crates/group-host/src/config.rs
 +++ b/crates/group-host/src/config.rs
-@@ -74,6 +74,14 @@ pub struct Config {
+@@ -79,6 +79,14 @@ pub struct Config {
      /// Whether it limits how much one caller asks, `RATE_LIMITS`: `on`,
      /// unless `off` (`limits`).
      pub rate_limits: bool,
@@ -47,7 +47,7 @@ index 421cd3c..e23d0cf 100644
  }
  
  /// The service that finds anyone on the network by what is typed.
-@@ -179,6 +187,15 @@ impl Config {
+@@ -192,6 +200,15 @@ impl Config {
              Some("off") => false,
              Some(other) => bail!("RATE_LIMITS is on or off, not {other}"),
          };
@@ -63,7 +63,7 @@ index 421cd3c..e23d0cf 100644
          Ok(Config {
              port,
              public_url,
-@@ -200,6 +217,8 @@ impl Config {
+@@ -214,6 +231,8 @@ impl Config {
              logs_keep,
              domain_check_at,
              rate_limits,
@@ -73,18 +73,18 @@ index 421cd3c..e23d0cf 100644
      }
  
 diff --git a/crates/group-host/src/lib.rs b/crates/group-host/src/lib.rs
-index 18561d7..378a794 100644
+index f4ff09c..c65e840 100644
 --- a/crates/group-host/src/lib.rs
 +++ b/crates/group-host/src/lib.rs
-@@ -64,6 +64,7 @@ pub mod time;
+@@ -67,6 +67,7 @@ pub mod time;
  pub mod token_writes;
  pub mod xrpc;
  
 +use anyhow::Context;
- use axum::extract::Path;
  use axum::routing::{get, post};
  use axum::{Json, Router};
-@@ -152,11 +153,39 @@ pub const OUTGOING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
+ use config::Config;
+@@ -156,11 +157,39 @@ pub const OUTGOING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
  /// message completed"), so the host drops one before that can happen.
  pub const IDLE_AT_MOST: std::time::Duration = std::time::Duration::from_secs(4);
  
@@ -126,7 +126,7 @@ index 18561d7..378a794 100644
  }
  
  /// A client for the host's requests to other servers.
-@@ -656,8 +685,10 @@ pub const USAGE: &str = "usage: group-host                 serve, as the environ
+@@ -666,8 +695,10 @@ pub const USAGE: &str = "usage: group-host                 serve, as the environ
                                    address the environment names now";
  
  /// What `group-host` does with `args` (without its own name): serves,

@@ -117,6 +117,7 @@ which the Node preload that sends a PDS's lookups to nginx does not reach, so, l
 in the network namespace of a dnsmasq, `grouphost-<name>-dns`, that answers nginx's address for every
 name under the domain, and nginx reaches it as `grouphost-<name>-dns:2600`. It publishes its groups to
 the snowglobe's PLC, resolves a handle at its own name (`HANDLE_RESOLVERS=well-known:https`), sends
-someone with no account to the PDS init seeds, and has no rate limits: a test network wants none. It
-tells no relay of news; `relay-init-grouphosts` has the relay crawl it like a PDS. To recreate
-`grouphost-<name>-dns`, recreate the host with it.
+someone with no account to the PDS init seeds, and has no rate limits: a test network wants none.
+From 0.4.1 the host itself asks each relay in its `PDS_CRAWLERS` to crawl it, as it starts and every
+20 minutes after; snowglobe sets none, and `relay-init-grouphosts` has the relay crawl it like a PDS.
+To recreate `grouphost-<name>-dns`, recreate the host with it.
