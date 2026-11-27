@@ -180,7 +180,9 @@ one group host today, whatever its file lists.
 **Group hosts** are optional. Each one runs beside the PDSes as a service of its own at
 `https://<name>.<domain>`, with every group's handle under `<name>.<domain>`; nginx, the
 certificate and the network page (its health, and its groups under accounts) get each one, as they
-get each PDS. The one kind, `opensocial`, is
+get each PDS, and the relay crawls it. Every group is an account of its host, so the relay lets
+a group host have 100,000 accounts, where a PDS keeps the relay's default of 100.
+The one kind, `opensocial`, is
 [atproto-group-host](https://github.com/tompscanlan/atproto-group-host), which publishes no image,
 so `up` builds it from a checkout with the repo's own Dockerfile, on every run (Docker's cache keeps
 an unchanged one quick). The checkout is the group host's `build` folder in the file, else
@@ -283,10 +285,12 @@ keeps both, and so does a `down -v` that fails. If Docker cannot say whether a s
 `up` stops before it saves any secret; start Docker and run it again.
 
 `snowglobe up` is safe to rerun; a rerun leaves the running services as they are, and only the
-one-shot `init` and `relay-init` run again. A rerun on a changed file stops what the file no longer
-runs. When a PDS, or nginx in front of it, started after the relay did, `up` restarts the relay
-before it returns: a relay that was running when a PDS went away can wait a long time before it
-redials it, so what the PDS writes meanwhile comes through late, or not for minutes. A first `up`
+one-shots `init` and `relay-init` (and `relay-init-grouphosts`, with group hosts) run again. A
+rerun on a changed file stops what the file no longer runs. When a PDS or a group host, or nginx in
+front of them, started after the relay did, `up` restarts the relay before it returns: a relay that
+was running when a PDS went away can wait a long time before it redials it, so what the PDS writes
+meanwhile comes through late, or not for minutes, and the same goes for a group host, which the
+relay crawls like a PDS. A first `up`
 starts the PDSes twice (below), so it restarts the relay once, and a rerun brings it back to a PDS
 that restarted. It refuses a PDS named for a handle ending an app
 claimed with `snowglobe app`, before it writes anything. It makes the leaf certificate if there is
