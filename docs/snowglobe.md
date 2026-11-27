@@ -147,7 +147,7 @@ grouphosts:                      # optional; each is grouphost-<name> at https:/
   - name: gh                     # its groups' handles are <group>.gh.<domain>
     kind: atgrp                  # group-host, the Atmosphere Groups host, built here unless build: or image:
   - name: os
-    kind: opensocial             # atproto-group-host
+    kind: opensocial             # atproto-group-host; deprecated, use atgrp
     build: ../atproto-group-host # a folder with a Dockerfile, from this file's folder; or image:
 
 services:                        # each true or false; these are the defaults
@@ -186,6 +186,7 @@ one group host today, whatever its file lists.
 certificate and the network page (its health, and its groups under accounts) get each one, as they
 get each PDS, and the relay crawls it. Every group is an account of its host, so the relay lets
 a group host have 100,000 accounts, where a PDS keeps the relay's default of 100. There are two kinds.
+`opensocial` is deprecated in favour of `atgrp`; use `atgrp` for anything new.
 
 `atgrp` is [group-host](https://github.com/bluesky-social/group-host), the host of the
 [Atmosphere Groups](https://tangled.org/atmospheregroups.org/spec) spec (`org.atgrp`). It runs as its
@@ -202,7 +203,8 @@ and permission sets from the lexicon authority: put the spec's `lexicons/org/atg
 `lexicons.publish` folder. Anyone may start a group. An app proxies a member's call to it at
 `${grouphosts.<name>.did}#atgrp`.
 
-`opensocial` is
+`opensocial`, the older kind, is deprecated. It still works unchanged, and will be removed in a later
+release. It is
 [atproto-group-host](https://github.com/tompscanlan/atproto-group-host), which publishes no image,
 so `up` builds it from a checkout with the repo's own Dockerfile, on every run (Docker's cache keeps
 an unchanged one quick). The checkout is the group host's `build` folder in the file, else
