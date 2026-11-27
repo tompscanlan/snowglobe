@@ -184,7 +184,8 @@ one group host today, whatever its file lists.
 **Group hosts** are optional. Each one runs beside the PDSes as a service of its own at
 `https://<name>.<domain>`, with every group's handle under `<name>.<domain>`; nginx, the
 certificate and the network page (its health, and its groups under accounts) get each one, as they
-get each PDS, and the relay crawls it. There are two kinds.
+get each PDS, and the relay crawls it. Every group is an account of its host, so the relay lets
+a group host have 100,000 accounts, where a PDS keeps the relay's default of 100. There are two kinds.
 
 `atgrp` is [group-host](https://github.com/bluesky-social/group-host), the host of the
 [Atmosphere Groups](https://tangled.org/atmospheregroups.org/spec) spec (`org.atgrp`). It runs as its

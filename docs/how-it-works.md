@@ -35,7 +35,11 @@
   through the relay. `relay-init-grouphosts`, a one-shot of its own, waits for each group host to be
   healthy, then has the relay and `collectiondir` crawl it. `relay-init` waits for no group host, so
   one that is slow to start, or never healthy, holds up no PDS's crawl. A crawl the relay refuses for
-  a group host is logged and does not fail `up`; one it refuses for a PDS does.
+  a group host is logged and does not fail `up`; one it refuses for a PDS does. Every group is an
+  account of its host, and the relay marks a host's accounts past its 100th `host-throttled`, so
+  after the crawl `relay-init-grouphosts` raises the host's account limit to 100,000 with the
+  relay's admin `/admin/pds/changeLimits` (`GROUP_HOST_REPO_LIMIT` in `lib/render.mjs`); a refusal
+  there is only logged too. A PDS keeps the relay's default.
 - **Tap runs in the DNS container's network** (`tap-dns`), whose DNS answers every name under the
   domain with nginx. That is how Tap reaches an app's https name to send it events, and checks a
   handle (`alice.<domain>`) at its own name. Tap's port is published on the snowglobe's address, `SG_BIND`, at `<SG_TAP_PORT>` (2480)
