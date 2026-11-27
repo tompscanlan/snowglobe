@@ -15,6 +15,8 @@ Changes to the default stack that existing setups will notice:
   a DNS container of its own, `grouphost-<name>-dns`, as Slingshot does. Its members' spaces want a
   PDS on `spaces-alpha-20261124`, and the spec's `org.atgrp` lexicons in `lexicons.publish`. Beside
   an atgrp group host `gh`, another can no longer be named `gh-console` or `gh-dns`.
+  `kind: opensocial` is deprecated in favour of `kind: atgrp`. It still works unchanged, and will be
+  removed in a later release.
 
 - **A short name for the spaces alpha of 2026-11-24: `image: spaces-alpha-20261124`.** It is
   atproto's `1f510f8e` (the revision its image's label names), built the same minute as

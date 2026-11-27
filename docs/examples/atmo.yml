@@ -5,7 +5,8 @@
 #
 # To add a group host: the Atmosphere Groups host (group-host), built here, whose members' spaces
 # want alpha on image: spaces-alpha-20261124 and the spec's org.atgrp lexicons in lexicons.publish;
-# or the opensocial.group proposal's atproto-group-host, built from a checkout:
+# or, deprecated in favour of atgrp and to be removed in a later release, the opensocial.group
+# proposal's atproto-group-host, built from a checkout:
 #
 # grouphosts:
 #   - name: gh                         # https://gh.snowglobe.local.snowglobe.at, handles <group>.gh.snowglobe.local.snowglobe.at
