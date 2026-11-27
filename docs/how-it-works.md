@@ -93,3 +93,31 @@ image. The setting covers both places the relay refuses those addresses: the hos
 firehose dialer for `wss://` hosts, which [a snowglobe](snowglobe.md) needs because its
 PDS names resolve to nginx's private address. Pick another commit with `SG_RELAY_INDIGO_COMMIT`; it needs a published `relay-<commit>`
 image, and the patch has to apply. The same setting picks the commit `collectiondir` is built from.
+
+## An atgrp group host, built locally
+
+`kind: atgrp` is [group-host](https://github.com/bluesky-social/group-host), whose releases are
+published as `ghcr.io/bluesky-social/group-host:<version>`. The released host trusts only the public
+certificate authorities built into it, and fetches what an account or an app names (a person's
+sign-in at their PDS, an app's client metadata) from public addresses alone while its public URL is
+https. On a snowglobe every name is nginx's, a private address, with a certificate from your CA, so
+the released image signs nobody in. `stack/group-host/Dockerfile` builds the release's commit with
+`stack/group-host/private-network.patch`, which adds two settings, both off unless set:
+`EXTRA_CA_CERTS`, a PEM file of certificate authorities it trusts beside the public ones, and
+`PRIVATE_ADDRESSES=on`. It copies the two programs into the release's image, which supplies the
+console. The build needs GitHub, crates.io and knotless.dev (the registry of the atproto crate it
+uses), and compiles Rust. `scripts/publish-images.mjs` publishes the image with the relay's, and `up`
+pulls it where the registry has one built from the same files, else builds it.
+
+The host and its console run from that image as `grouphost-<name>` (port 2600) and
+`grouphost-<name>-console` (2601). At `<name>.<domain>` nginx sends `/xrpc/`, `/oauth/`,
+`/.well-known/` and `/img/` to the host, the `subscribeRepos` websocket among them, and the rest to
+the console; every name under it, a group's handle, goes to the host. The host is a Rust program,
+which the Node preload that sends a PDS's lookups to nginx does not reach, so, like Slingshot, it runs
+in the network namespace of a dnsmasq, `grouphost-<name>-dns`, that answers nginx's address for every
+name under the domain, and nginx reaches it as `grouphost-<name>-dns:2600`. It publishes its groups to
+the snowglobe's PLC, resolves a handle at its own name (`HANDLE_RESOLVERS=well-known:https`), sends
+someone with no account to the PDS init seeds, and has no rate limits: a test network wants none.
+From 0.4.1 the host itself asks each relay in its `PDS_CRAWLERS` to crawl it, as it starts and every
+20 minutes after; snowglobe sets none, and `relay-init-grouphosts` has the relay crawl it like a PDS.
+To recreate `grouphost-<name>-dns`, recreate the host with it.

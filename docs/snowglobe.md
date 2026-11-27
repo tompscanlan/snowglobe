@@ -145,7 +145,9 @@ pds:                             # at least one; each is pds-<name> at https://<
 
 grouphosts:                      # optional; each is grouphost-<name> at https://<name>.<domain>
   - name: gh                     # its groups' handles are <group>.gh.<domain>
-    kind: opensocial             # atproto-group-host, the only kind so far
+    kind: atgrp                  # group-host, the Atmosphere Groups host, built here unless build: or image:
+  - name: os
+    kind: opensocial             # atproto-group-host
     build: ../atproto-group-host # a folder with a Dockerfile, from this file's folder; or image:
 
 services:                        # each true or false; these are the defaults
@@ -183,8 +185,24 @@ one group host today, whatever its file lists.
 `https://<name>.<domain>`, with every group's handle under `<name>.<domain>`; nginx, the
 certificate and the network page (its health, and its groups under accounts) get each one, as they
 get each PDS, and the relay crawls it. Every group is an account of its host, so the relay lets
-a group host have 100,000 accounts, where a PDS keeps the relay's default of 100.
-The one kind, `opensocial`, is
+a group host have 100,000 accounts, where a PDS keeps the relay's default of 100. There are two kinds.
+
+`atgrp` is [group-host](https://github.com/bluesky-social/group-host), the host of the
+[Atmosphere Groups](https://tangled.org/atmospheregroups.org/spec) spec (`org.atgrp`). It runs as its
+release does: the host and its console from one image, the console at `https://<name>.<domain>/` and
+the host's methods, OAuth and `/.well-known/` under the same name. The released image cannot sign
+anyone in on a snowglobe, so `up` builds that release with a small patch (`stack/group-host/`,
+[An atgrp group host, built locally](how-it-works.md#an-atgrp-group-host-built-locally)), or pulls that
+build where snowglobe has published it. `build:` (a checkout, with its own Dockerfile) or `image:`
+runs another build, which must take the patch's two settings and, as the release's image does, have `group-host`
+and `node` on its path and the console at `/app/build`: snowglobe runs the two with those, and both
+health checks ask with node. Its groups' spaces need members on a PDS of the
+spaces alpha it was made for, `image: spaces-alpha-20261124`, and members' PDSes learn its space types
+and permission sets from the lexicon authority: put the spec's `lexicons/org/atgrp/` in your
+`lexicons.publish` folder. Anyone may start a group. An app proxies a member's call to it at
+`${grouphosts.<name>.did}#atgrp`.
+
+`opensocial` is
 [atproto-group-host](https://github.com/tompscanlan/atproto-group-host), which publishes no image,
 so `up` builds it from a checkout with the repo's own Dockerfile, on every run (Docker's cache keeps
 an unchanged one quick). The checkout is the group host's `build` folder in the file, else

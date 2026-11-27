@@ -103,7 +103,7 @@ describe("what up does with the globe's own name", () => {
 function globeRoot() {
   // realpath: on macOS tmpdir() is under /var, a link to /private/var, which is what a command's cwd reports.
   const r = mkdtempSync(join(realpathSync(tmpdir()), 'snowglobe-up-'));
-  for (const d of ['bin', 'lib', 'stack/https/dns', 'stack/https/proxy', 'stack/pdsls', 'stack/jetstream', 'stack/cdn']) cpSync(join(ROOT, d), join(r, d), { recursive: true });
+  for (const d of ['bin', 'lib', 'stack/https/dns', 'stack/https/proxy', 'stack/pdsls', 'stack/jetstream', 'stack/cdn', 'stack/group-host']) cpSync(join(ROOT, d), join(r, d), { recursive: true });
   cpSync(join(ROOT, 'stack/https/nginx.conf.template'), join(r, 'stack/https/nginx.conf.template'));
   symlinkSync(join(ROOT, 'node_modules'), join(r, 'node_modules'));
   writeFileSync(join(r, 'package.json'), '{"type": "module"}\n');
