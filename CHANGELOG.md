@@ -4,6 +4,12 @@ Changes to the default stack that existing setups will notice:
 
 ## Unreleased
 
+- **A short name for the spaces alpha of 2026-11-24: `image: spaces-alpha-20261124`.** It is
+  atproto's `1f510f8e` (the revision its image's label names), built the same minute as
+  `@atproto/space` 0.0.0-spaces-alpha-20261124235736, pinned by digest: spaces named `at:space/…`,
+  `authorizeSpaceSync`, and signed space requests.
+  `spaces-alpha` stays the alpha of 2026-10-01, so a file that names it runs what it ran before.
+
 - **The relay crawls every group host too.** `relay-init` added only the PDSes, so a group's writes
   at its group host never reached the relay, Jetstream or anything indexing from them, and an app
   that lists groups from Jetstream never saw one. Group hosts serve `subscribeRepos` like a PDS; a

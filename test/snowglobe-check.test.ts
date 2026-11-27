@@ -230,6 +230,12 @@ describe('the rules behind the check', () => {
     expect(whereOf(ok({ pds: [{ ...PDS_A, image }] }))).toEqual(good ? [] : ['pds[0].image']);
   });
 
+  it('runs each spaces alpha its short name pins, by digest', () => {
+    const image = (name: string) => checkGlobe(ok({ pds: [{ ...PDS_A, image: name }] })).globe.pds[0].image;
+    expect(image('spaces-alpha')).toBe('ghcr.io/bluesky-social/atproto@sha256:1cf9349e9f0e89789784569fed376cd647742ea7c368948625f44779ba03f150');
+    expect(image('spaces-alpha-20261124')).toBe('ghcr.io/bluesky-social/atproto@sha256:7edcfdfe1c6e2638de00b1d718d8702bce321389595711aab9f8008b3e269350');
+  });
+
   it('knows its group host kinds, by their own name only', () => {
     for (const kind of ['other', 'constructor', ['opensocial'], { toString: 'typo' }, undefined])
       expect(whereOf(ok({ grouphosts: [{ name: 'gh', kind }] })), JSON.stringify(kind)).toEqual(['grouphosts[0].kind']);

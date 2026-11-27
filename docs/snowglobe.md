@@ -135,7 +135,9 @@ globe: bookclub                  # lowercase letters and digits; the snowglobe's
 
 pds:                             # at least one; each is pds-<name> at https://<name>.<domain>
   - name: alpha
-    image: spaces-alpha          # a short name (pinned by digest), or any image reference
+    image: spaces-alpha          # a short name (pinned by digest), or any image reference. Short names:
+                                 # spaces-alpha, the spaces alpha of 2026-10-01 (79d6307e), and
+                                 # spaces-alpha-20261124, the one of 2026-11-24 (1f510f8e, at:space/ URIs)
     bare_handles: true           # handles <name>.<domain>; at most one PDS. Others: <name>.<pds>.<domain>
     invites: required            # open (default) or required
   - name: regular
