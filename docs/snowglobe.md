@@ -135,7 +135,9 @@ globe: bookclub                  # lowercase letters and digits; the snowglobe's
 
 pds:                             # at least one; each is pds-<name> at https://<name>.<domain>
   - name: alpha
-    image: spaces-alpha          # a short name (pinned by digest), or any image reference
+    image: spaces-alpha          # a short name (pinned by digest), or any image reference. Short names:
+                                 # spaces-alpha, the spaces alpha of 2026-10-01 (79d6307e), and
+                                 # spaces-alpha-20261124, the one of 2026-11-24 (1f510f8e, at:space/ URIs)
     bare_handles: true           # handles <name>.<domain>; at most one PDS. Others: <name>.<pds>.<domain>
     invites: required            # open (default) or required
   - name: regular
@@ -143,7 +145,9 @@ pds:                             # at least one; each is pds-<name> at https://<
 
 grouphosts:                      # optional; each is grouphost-<name> at https://<name>.<domain>
   - name: gh                     # its groups' handles are <group>.gh.<domain>
-    kind: opensocial             # atproto-group-host, the only kind so far
+    kind: atgrp                  # group-host, the Atmosphere Groups host, built here unless build: or image:
+  - name: os
+    kind: opensocial             # atproto-group-host; deprecated, use atgrp
     build: ../atproto-group-host # a folder with a Dockerfile, from this file's folder; or image:
 
 services:                        # each true or false; these are the defaults
@@ -180,7 +184,27 @@ one group host today, whatever its file lists.
 **Group hosts** are optional. Each one runs beside the PDSes as a service of its own at
 `https://<name>.<domain>`, with every group's handle under `<name>.<domain>`; nginx, the
 certificate and the network page (its health, and its groups under accounts) get each one, as they
-get each PDS. The one kind, `opensocial`, is
+get each PDS, and the relay crawls it. Every group is an account of its host, so the relay lets
+a group host have 100,000 accounts, where a PDS keeps the relay's default of 100. There are two kinds.
+`opensocial` is deprecated in favour of `atgrp`; use `atgrp` for anything new.
+
+`atgrp` is [group-host](https://github.com/bluesky-social/group-host), the host of the
+[Atmosphere Groups](https://tangled.org/atmospheregroups.org/spec) spec (`org.atgrp`). It runs as its
+release does: the host and its console from one image, the console at `https://<name>.<domain>/` and
+the host's methods, OAuth and `/.well-known/` under the same name. The released image cannot sign
+anyone in on a snowglobe, so `up` builds that release with a small patch (`stack/group-host/`,
+[An atgrp group host, built locally](how-it-works.md#an-atgrp-group-host-built-locally)), or pulls that
+build where snowglobe has published it. `build:` (a checkout, with its own Dockerfile) or `image:`
+runs another build, which must take the patch's two settings and, as the release's image does, have `group-host`
+and `node` on its path and the console at `/app/build`: snowglobe runs the two with those, and both
+health checks ask with node. Its groups' spaces need members on a PDS of the
+spaces alpha it was made for, `image: spaces-alpha-20261124`, and members' PDSes learn its space types
+and permission sets from the lexicon authority: put the spec's `lexicons/org/atgrp/` in your
+`lexicons.publish` folder. Anyone may start a group. An app proxies a member's call to it at
+`${grouphosts.<name>.did}#atgrp`.
+
+`opensocial`, the older kind, is deprecated. It still works unchanged, and will be removed in a later
+release. It is
 [atproto-group-host](https://github.com/tompscanlan/atproto-group-host), which publishes no image,
 so `up` builds it from a checkout with the repo's own Dockerfile, on every run (Docker's cache keeps
 an unchanged one quick). The checkout is the group host's `build` folder in the file, else
@@ -283,10 +307,12 @@ keeps both, and so does a `down -v` that fails. If Docker cannot say whether a s
 `up` stops before it saves any secret; start Docker and run it again.
 
 `snowglobe up` is safe to rerun; a rerun leaves the running services as they are, and only the
-one-shot `init` and `relay-init` run again. A rerun on a changed file stops what the file no longer
-runs. When a PDS, or nginx in front of it, started after the relay did, `up` restarts the relay
-before it returns: a relay that was running when a PDS went away can wait a long time before it
-redials it, so what the PDS writes meanwhile comes through late, or not for minutes. A first `up`
+one-shots `init` and `relay-init` (and `relay-init-grouphosts`, with group hosts) run again. A
+rerun on a changed file stops what the file no longer runs. When a PDS or a group host, or nginx in
+front of them, started after the relay did, `up` restarts the relay before it returns: a relay that
+was running when a PDS went away can wait a long time before it redials it, so what the PDS writes
+meanwhile comes through late, or not for minutes, and the same goes for a group host, which the
+relay crawls like a PDS. A first `up`
 starts the PDSes twice (below), so it restarts the relay once, and a rerun brings it back to a PDS
 that restarted. It refuses a PDS named for a handle ending an app
 claimed with `snowglobe app`, before it writes anything. It makes the leaf certificate if there is

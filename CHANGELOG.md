@@ -2,6 +2,40 @@
 
 Changes to the default stack that existing setups will notice:
 
+## Unreleased
+
+- **A second kind of group host, `kind: atgrp`: [group-host](https://github.com/bluesky-social/group-host),
+  the Atmosphere Groups host.** It runs as its release does, the host and its console from one image,
+  at `https://<name>.<domain>`, with its groups' handles under that name. Its released image trusts
+  only the public certificate authorities and refuses private addresses over https, so it can sign
+  nobody in on a snowglobe: `up` builds its 0.6.1 release with `stack/group-host/private-network.patch`,
+  which adds two settings for that, off unless set, unless the file names `build:` or `image:`. The
+  images workflow publishes that image with the relay's, and `up` pulls it where the registry has one
+  built from the same files; where it has none, `up` builds it, which compiles Rust. The host runs in
+  a DNS container of its own, `grouphost-<name>-dns`, as Slingshot does. Its members' spaces want a
+  PDS on `spaces-alpha-20261124`, and the spec's `org.atgrp` lexicons in `lexicons.publish`. Beside
+  an atgrp group host `gh`, another can no longer be named `gh-console` or `gh-dns`.
+  `kind: opensocial` is deprecated in favour of `kind: atgrp`. It still works unchanged, and will be
+  removed in a later release.
+
+- **A short name for the spaces alpha of 2026-11-24: `image: spaces-alpha-20261124`.** It is
+  atproto's `1f510f8e` (the revision its image's label names), built the same minute as
+  `@atproto/space` 0.0.0-spaces-alpha-20261124235736, pinned by digest: spaces named `at:space/…`,
+  `authorizeSpaceSync`, and signed space requests.
+  `spaces-alpha` stays the alpha of 2026-10-01, so a file that names it runs what it ran before.
+
+- **The relay crawls every group host too.** `relay-init` added only the PDSes, so a group's writes
+  at its group host never reached the relay, Jetstream or anything indexing from them, and an app
+  that lists groups from Jetstream never saw one. Group hosts serve `subscribeRepos` like a PDS; a
+  one-shot of their own, `relay-init-grouphosts`, has the relay and the collection directory crawl
+  each once it is healthy, and `up` restarts the relay when a group host started after it, as it
+  does for a PDS. `relay-init` still crawls the PDSes without waiting for any group host, and a
+  group host's crawl that the relay refuses is only logged. Every group is an account of its host,
+  and the relay lets a host have 100 accounts unless told more, marking the rest `host-throttled`,
+  so an app that reads account status from the relay did not find a group made after the 100th.
+  Once the relay takes a group host's crawl, `relay-init-grouphosts` raises that host's account
+  limit to 100,000; a refusal there is only logged. A PDS keeps the relay's default.
+
 ## v0.7.0 (2026-11-08)
 
 - **`up` fails when the snowglobe's own name does not reach it.** Last, it looks the domain up the way

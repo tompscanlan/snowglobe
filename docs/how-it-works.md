@@ -31,6 +31,15 @@
   crawl each PDS, so an account that wrote before it started is listed too. `relay-init` gives
   every PDS to the relay first and never waits on `collectiondir`, so a directory that is down
   leaves the relay, Jetstream and Tap as they were.
+- **The relay crawls each group host as it does a PDS.** A group's writes reach Jetstream only
+  through the relay. `relay-init-grouphosts`, a one-shot of its own, waits for each group host to be
+  healthy, then has the relay and `collectiondir` crawl it. `relay-init` waits for no group host, so
+  one that is slow to start, or never healthy, holds up no PDS's crawl. A crawl the relay refuses for
+  a group host is logged and does not fail `up`; one it refuses for a PDS does. Every group is an
+  account of its host, and the relay marks a host's accounts past its 100th `host-throttled`, so
+  after the crawl `relay-init-grouphosts` raises the host's account limit to 100,000 with the
+  relay's admin `/admin/pds/changeLimits` (`GROUP_HOST_REPO_LIMIT` in `lib/render.mjs`); a refusal
+  there is only logged too. A PDS keeps the relay's default.
 - **Tap runs in the DNS container's network** (`tap-dns`), whose DNS answers every name under the
   domain with nginx. That is how Tap reaches an app's https name to send it events, and checks a
   handle (`alice.<domain>`) at its own name. Tap's port is published on the snowglobe's address, `SG_BIND`, at `<SG_TAP_PORT>` (2480)
@@ -84,3 +93,31 @@ image. The setting covers both places the relay refuses those addresses: the hos
 firehose dialer for `wss://` hosts, which [a snowglobe](snowglobe.md) needs because its
 PDS names resolve to nginx's private address. Pick another commit with `SG_RELAY_INDIGO_COMMIT`; it needs a published `relay-<commit>`
 image, and the patch has to apply. The same setting picks the commit `collectiondir` is built from.
+
+## An atgrp group host, built locally
+
+`kind: atgrp` is [group-host](https://github.com/bluesky-social/group-host), whose releases are
+published as `ghcr.io/bluesky-social/group-host:<version>`. The released host trusts only the public
+certificate authorities built into it, and fetches what an account or an app names (a person's
+sign-in at their PDS, an app's client metadata) from public addresses alone while its public URL is
+https. On a snowglobe every name is nginx's, a private address, with a certificate from your CA, so
+the released image signs nobody in. `stack/group-host/Dockerfile` builds the release's commit with
+`stack/group-host/private-network.patch`, which adds two settings, both off unless set:
+`EXTRA_CA_CERTS`, a PEM file of certificate authorities it trusts beside the public ones, and
+`PRIVATE_ADDRESSES=on`. It copies the two programs into the release's image, which supplies the
+console. The build needs GitHub, crates.io and knotless.dev (the registry of the atproto crate it
+uses), and compiles Rust. `scripts/publish-images.mjs` publishes the image with the relay's, and `up`
+pulls it where the registry has one built from the same files, else builds it.
+
+The host and its console run from that image as `grouphost-<name>` (port 2600) and
+`grouphost-<name>-console` (2601). At `<name>.<domain>` nginx sends `/xrpc/`, `/oauth/`,
+`/.well-known/` and `/img/` to the host, the `subscribeRepos` websocket among them, and the rest to
+the console; every name under it, a group's handle, goes to the host. The host is a Rust program,
+which the Node preload that sends a PDS's lookups to nginx does not reach, so, like Slingshot, it runs
+in the network namespace of a dnsmasq, `grouphost-<name>-dns`, that answers nginx's address for every
+name under the domain, and nginx reaches it as `grouphost-<name>-dns:2600`. It publishes its groups to
+the snowglobe's PLC, resolves a handle at its own name (`HANDLE_RESOLVERS=well-known:https`), sends
+someone with no account to the PDS init seeds, and has no rate limits: a test network wants none.
+From 0.4.1 the host itself asks each relay in its `PDS_CRAWLERS` to crawl it, as it starts and every
+20 minutes after; snowglobe sets none, and `relay-init-grouphosts` has the relay crawl it like a PDS.
+To recreate `grouphost-<name>-dns`, recreate the host with it.

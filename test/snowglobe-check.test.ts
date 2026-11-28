@@ -230,10 +230,25 @@ describe('the rules behind the check', () => {
     expect(whereOf(ok({ pds: [{ ...PDS_A, image }] }))).toEqual(good ? [] : ['pds[0].image']);
   });
 
+  it('runs each spaces alpha its short name pins, by digest', () => {
+    const image = (name: string) => checkGlobe(ok({ pds: [{ ...PDS_A, image: name }] })).globe.pds[0].image;
+    expect(image('spaces-alpha')).toBe('ghcr.io/bluesky-social/atproto@sha256:1cf9349e9f0e89789784569fed376cd647742ea7c368948625f44779ba03f150');
+    expect(image('spaces-alpha-20261124')).toBe('ghcr.io/bluesky-social/atproto@sha256:7edcfdfe1c6e2638de00b1d718d8702bce321389595711aab9f8008b3e269350');
+  });
+
   it('knows its group host kinds, by their own name only', () => {
     for (const kind of ['other', 'constructor', ['opensocial'], { toString: 'typo' }, undefined])
       expect(whereOf(ok({ grouphosts: [{ name: 'gh', kind }] })), JSON.stringify(kind)).toEqual(['grouphosts[0].kind']);
     expect(whereOf(ok({ grouphosts: [{ name: 'gh', kind: 'opensocial' }] }))).toEqual([]);
+    expect(whereOf(ok({ grouphosts: [{ name: 'gh', kind: 'atgrp' }] }))).toEqual([]);
+  });
+
+  it('keeps an atgrp group host\'s console and DNS from another group host\'s name', () => {
+    const hosts = (kind: string, other: string) => ok({ grouphosts: [{ name: 'gh', kind }, { name: other, kind: 'opensocial' }] });
+    expect(whereOf(hosts('atgrp', 'gh-console'))).toEqual(['grouphosts[1].name']);
+    expect(whereOf(hosts('atgrp', 'gh-dns'))).toEqual(['grouphosts[1].name']);
+    expect(whereOf(hosts('atgrp', 'gh-web'))).toEqual([]);
+    expect(whereOf(hosts('opensocial', 'gh-dns'))).toEqual([]);
   });
 
   it('takes a group host\'s image or its build folder, a folder with a Dockerfile beside the file, not both', () => {

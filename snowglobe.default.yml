@@ -36,9 +36,12 @@ services:                      # these are the defaults, each true or false
 #   authority: alpha
 #   publish: lexicons          # a folder next to this file; up publishes every lexicon in it
 
-# A group host runs beside the PDSes, at https://gh.snowglobe.local.snowglobe.at.
+# A group host runs beside the PDSes, at https://gh.snowglobe.local.snowglobe.at: the Atmosphere
+# Groups host (atgrp, built here), or atproto-group-host (opensocial, from a checkout).
 # grouphosts:
 #   - name: gh
+#     kind: atgrp
+#   - name: os
 #     kind: opensocial
 #     build: ../atproto-group-host   # a folder with a Dockerfile, from this file's folder
 

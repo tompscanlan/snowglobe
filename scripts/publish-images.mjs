@@ -5,15 +5,17 @@
 //
 //   node scripts/publish-images.mjs [--push] [--dry-run]
 //
-// The tags come from docs/examples/atmo.yml rendered as `up` renders it, which has the relay; a
-// default SG_SLINGSHOT_COMMIT or SG_RELAY_INDIGO_COMMIT is whatever the code says today.
+// The tags come from docs/examples/atmo.yml rendered as `up` renders it, which has the relay, with
+// an atgrp group host added (stack/group-host); a default SG_SLINGSHOT_COMMIT or
+// SG_RELAY_INDIGO_COMMIT is whatever the code says today.
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadGlobe } from '../lib/config.mjs';
+import { parse } from 'yaml';
+import { checkGlobe } from '../lib/config.mjs';
 import { PUBLISHED, REGISTRY, SOURCE_LABEL, sourceHash } from '../lib/prebuilt.mjs';
 import { loadBase, renderGlobe } from '../lib/render.mjs';
 
@@ -23,7 +25,8 @@ const push = process.argv.includes('--push');
 const dry = process.argv.includes('--dry-run');
 const registry = process.env.SG_IMAGE_REGISTRY ?? REGISTRY;
 
-const { globe, errors } = loadGlobe(join(ROOT, 'docs/examples/atmo.yml'));
+const atmo = parse(readFileSync(join(ROOT, 'docs/examples/atmo.yml'), 'utf8'));
+const { globe, errors } = checkGlobe({ ...atmo, grouphosts: [{ name: 'gh', kind: 'atgrp' }] });
 if (errors.length) throw new Error(errors.join('\n'));
 const file = join(mkdtempSync(join(tmpdir(), 'snowglobe-publish-')), 'compose.yml');
 writeFileSync(file, renderGlobe(globe, loadBase(ROOT), { stateDir: '/state/snowglobe/snowglobe' })['compose.yml']);

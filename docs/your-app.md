@@ -165,7 +165,7 @@ The names follow the file: the section, the name you gave it, then the field. Ev
 |---|---|
 | `domain`, `globe`, `page.url` | the file's domain and name; `https://<domain>/` |
 | `pds.<name>.url` `.host` `.did` | `https://<name>.<domain>`, the host, `did:web:<host>` |
-| `grouphosts.<name>.url` `.host` `.did` | the same, for a group host |
+| `grouphosts.<name>.url` `.host` `.did` | the same, for a group host; an `atgrp` one takes a member's proxied call at `<did>#atgrp` |
 | `apps.<name>.url` `.host` | `https://<name>.app.<domain>` |
 | `services.plc.url` | `https://plc.<domain>` |
 | `services.relay` `.jetstream` `.url` `.ws` | `https://relay.<domain>`, `wss://relay.<domain>`; Jetstream's `.ws` ends in `/subscribe`, the older protocol, and a Jetstream v2 client such as contrail takes `.url` |

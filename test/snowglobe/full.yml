@@ -7,6 +7,7 @@ pds:
 grouphosts:
   - { name: gh, kind: opensocial }
   - { name: gh2, kind: opensocial, image: ghcr.io/example/grouphost@sha256:0000000000000000000000000000000000000000000000000000000000000000 }
+  - { name: groups, kind: atgrp }
 services: { relay: auto, jetstream: true, tap: false, slingshot: true, pdsls: false, cdn: false }
 lexicons: { authority: alpha }
 accounts: [alice@alpha, bob@regular]

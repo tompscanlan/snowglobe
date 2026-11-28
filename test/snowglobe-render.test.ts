@@ -14,7 +14,7 @@ import { parse } from 'yaml';
 // @ts-expect-error: a plain .mjs module, without types
 import { checkGlobe, loadGlobe, withGroupHostSources } from '../lib/config.mjs';
 // @ts-expect-error: a plain .mjs module, without types
-import { contextHash, loadBase, renderGlobe } from '../lib/render.mjs';
+import { GROUP_HOST_REPO_LIMIT, contextHash, loadBase, renderGlobe } from '../lib/render.mjs';
 // @ts-expect-error: a plain .mjs module, without types
 import { SECRETS } from '../lib/env.mjs';
 
@@ -144,23 +144,27 @@ describe('snowglobe render', () => {
     );
   });
 
-  // relay-init's script, run by sh with a curl that logs each URL and fails the ones the shell
-  // pattern `fail` matches.
-  function runRelayInit(fail: string) {
+  // relay-init's script (or another one-shot's of the same shape), run by sh with a curl that logs
+  // each URL (and, in bodies, each URL with what it sends) and fails the ones the shell pattern
+  // `fail` matches.
+  function runRelayInit(fail: string, service = 'relay-init', doc: object = FOUR) {
     const dir = mkdtempSync(join(tmpdir(), 'relay-init-'));
     const log = join(dir, 'calls');
+    const sent = join(dir, 'bodies');
     writeFileSync(join(dir, 'apk'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     writeFileSync(
       join(dir, 'curl'),
-      `#!/bin/sh\nfor a; do u="$a"; done\necho "$u" >> "${log}"\ncase "$u" in ${fail}) exit 22;; esac\nexit 0\n`,
+      `#!/bin/sh\nd=; p=\nfor a; do [ "$p" = -d ] && d="$a"; p="$a"; u="$a"; done\necho "$u" >> "${log}"\n` +
+        `[ -n "$d" ] && echo "$u $d" >> "${sent}"\ncase "$u" in ${fail}) exit 22;; esac\nexit 0\n`,
       { mode: 0o755 },
     );
-    const script = render(FOUR).compose.services['relay-init'].command[1].replaceAll('$$', '$');
+    const script = render(doc).compose.services[service].command[1].replaceAll('$$', '$');
     const r = spawnSync('/bin/sh', ['-c', script], {
       encoding: 'utf8',
       env: { PATH: `${dir}:${process.env.PATH}`, RELAY_ADMIN_PASSWORD: 'r', COLLECTIONDIR_ADMIN_TOKEN: 'c', RELAY_HOSTS: 'a.test b.test c.test' },
     });
-    return { status: r.status, calls: existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : [] };
+    const lines = (f: string) => (existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n') : []);
+    return { status: r.status, calls: lines(log), bodies: lines(sent) };
   }
 
   it('gives every PDS to the relay even when the collection directory refuses its crawls', () => {
@@ -175,6 +179,42 @@ describe('snowglobe render', () => {
     expect(status).toBe(0);
     expect(calls.filter((u) => u === 'http://relay:2470/admin/pds/requestCrawl')).toHaveLength(3);
     expect(calls.filter((u) => u.includes('/admin/pds/requestCrawl') && u.includes('collectiondir'))).toHaveLength(0);
+  });
+
+  it('stops at a PDS the relay refuses, but only logs a group host it refuses and goes on to the next', () => {
+    const relay = 'http://relay:2470/admin/pds/requestCrawl';
+    const pds = runRelayInit('*relay:2470/admin*');
+    expect(pds.status).not.toBe(0);
+    expect(pds.calls.filter((u) => u === relay)).toHaveLength(1);
+    const gh = runRelayInit('*relay:2470/admin*', 'relay-init-grouphosts', GH);
+    expect(gh.status).toBe(0);
+    expect(gh.calls.filter((u) => u === relay)).toHaveLength(3);
+    // A host the relay refused gets no account limit of its own.
+    expect(gh.calls.filter((u) => u.endsWith('/admin/pds/changeLimits'))).toHaveLength(0);
+    expect(gh.calls.filter((u) => u === 'http://collectiondir:2510/admin/pds/requestCrawl')).toHaveLength(3);
+  });
+
+  it('raises every group host\'s account limit at the relay once it is crawled, of either kind, and no PDS\'s', () => {
+    const limits = 'http://relay:2470/admin/pds/changeLimits';
+    expect(GROUP_HOST_REPO_LIMIT).toBeGreaterThan(100);
+    expect(render(FOUR).compose.services['relay-init'].command[1]).not.toContain('changeLimits');
+    for (const doc of [GH, ATGRP]) {
+      expect(render(doc).compose.services['relay-init'].command[1]).not.toContain('changeLimits');
+      const pds = runRelayInit('nomatch', 'relay-init', doc);
+      expect(pds.status).toBe(0);
+      expect(pds.calls).not.toContain(limits);
+      const gh = runRelayInit('nomatch', 'relay-init-grouphosts', doc);
+      expect(gh.status).toBe(0);
+      const sent = gh.bodies.filter((b) => b.startsWith(`${limits} `)).map((b) => JSON.parse(b.slice(limits.length + 1)));
+      expect(sent).toEqual(['a.test', 'b.test', 'c.test'].map((host) => ({ host, repo_limit: GROUP_HOST_REPO_LIMIT })));
+      // Each after its crawl.
+      expect(gh.calls.slice(0, 6)).toEqual([1, 2, 3].flatMap(() => ['http://relay:2470/admin/pds/requestCrawl', limits]));
+    }
+    // A refused limit is logged, and the rest go on.
+    const refused = runRelayInit('*changeLimits', 'relay-init-grouphosts', ATGRP);
+    expect(refused.status).toBe(0);
+    expect(refused.calls.filter((u) => u === limits)).toHaveLength(3);
+    expect(refused.calls.filter((u) => u === 'http://collectiondir:2510/admin/pds/requestCrawl')).toHaveLength(3);
   });
 
   it('routes each PDS\'s name and handles to its service, and puts both on the leaf', () => {
@@ -382,6 +422,23 @@ describe('snowglobe render: group hosts', () => {
     }
   });
 
+  it('has the relay crawl each one once it is healthy, in a one-shot the PDSes\' crawl does not wait for', () => {
+    const healthy = { condition: 'service_healthy' };
+    const { compose, env } = render(GH);
+    const init = compose.services['relay-init'];
+    expect(init.environment.RELAY_HOSTS.split(' ')).toEqual(GH.pds.map((p) => `${p.name}.mine.test`));
+    expect(init.depends_on).toEqual({ relay: healthy, nginx: healthy, 'pds-alpha': healthy, 'pds-regular': healthy, 'pds-prod': healthy });
+    const gh = compose.services['relay-init-grouphosts'];
+    expect(gh.environment.RELAY_HOSTS.split(' ')).toEqual(['gh.mine.test', 'gh2.mine.test']);
+    expect(gh.depends_on).toEqual({ relay: healthy, nginx: healthy, 'grouphost-gh': healthy, 'grouphost-gh2': healthy });
+    expect(gh.command[1]).toContain('http://collectiondir:2510/admin/pds/requestCrawl');
+    expect(env.SG_ONESHOTS).toBe('init relay-init relay-init-grouphosts');
+    // With no relay, nothing crawls them.
+    const solo = render({ ...GH, pds: [PDS('solo')], services: { jetstream: false, slingshot: false } });
+    expect(solo.compose.services).not.toHaveProperty('relay-init-grouphosts');
+    expect(solo.env.SG_ONESHOTS).toBe('init');
+  });
+
   it('gives each one its nginx server, certificate names, page row, health and group list', () => {
     const { files, env } = render(GH);
     expect(files['nginx/globe.conf']).toContain('server_name gh.mine.test *.gh.mine.test;');
@@ -437,6 +494,109 @@ describe('snowglobe render: group hosts', () => {
     expect(r.status, r.stderr).toBe(0);
     const c = spawnSync('docker', ['compose', '-p', 'snowglobe-render-test', '--project-directory', ROOT, '-f', join(dir, 'out', 'compose.yml'), 'config', '-q'], { encoding: 'utf8', env: { ...process.env, ...SECRET_ENV } });
     expect(c.status, c.stderr).toBe(0);
+  });
+});
+
+// The Atmosphere Groups host: one built from stack/group-host, one from a checkout, one from an image.
+const ATGRP = {
+  ...THREE,
+  grouphosts: [
+    { name: 'gh', kind: 'atgrp' },
+    { name: 'gh2', kind: 'atgrp', build: BUILD },
+    { name: 'gh3', kind: 'atgrp', image: 'ghcr.io/example/group-host:1' },
+  ],
+};
+
+describe('snowglobe render: atgrp group hosts', () => {
+  it('runs the host and its console from one image: stack/group-host\'s, unless the file names a checkout or an image', () => {
+    const { compose } = render(ATGRP);
+    const sources = {
+      gh: { build: './stack/group-host', image: base.tags['snowglobe-group-host'] },
+      gh2: { build: { context: BUILD }, image: '${COMPOSE_PROJECT_NAME}-grouphost-gh2' },
+      gh3: { build: undefined, image: 'ghcr.io/example/group-host:1' },
+    };
+    for (const [name, source] of Object.entries(sources)) {
+      const of = (s: string) => ({ build: compose.services[s].build, image: compose.services[s].image });
+      expect(of(`grouphost-${name}`), name).toEqual(source);
+      // Only the host builds it; the console runs the image by its name, so it is built once.
+      expect(of(`grouphost-${name}-console`), `${name}-console`).toEqual({ build: undefined, image: source.image });
+    }
+    expect(compose.services['grouphost-gh'].command).toEqual(['group-host']);
+    expect(compose.services['grouphost-gh-console'].command).toEqual(['node', '/app/build']);
+    // The stack's image is tagged by its Dockerfile and patch, and published like the relay's.
+    expect(base.tags['snowglobe-group-host']).toBe(`snowglobe-group-host:${contextHash(ROOT, 'stack/group-host', ['Dockerfile', 'private-network.patch'])}`);
+  });
+
+  it('runs the host in a DNS of its own, trusting the CA and reaching private addresses, on the globe\'s PLC and no rate limits', () => {
+    const { compose } = render(ATGRP);
+    const s = compose.services['grouphost-gh'];
+    expect(s.network_mode).toBe('service:grouphost-gh-dns');
+    expect(compose.services['grouphost-gh-dns']).toMatchObject({ image: base.tags['snowglobe-dns'], dns: ['127.0.0.1'], environment: { SG_DOMAIN: 'mine.test' } });
+    expect(s.environment).toEqual({
+      PORT: '2600',
+      PUBLIC_URL: 'https://gh.mine.test',
+      HANDLE_DOMAIN: '.gh.mine.test',
+      DATA_DIR: '/data',
+      PLC_URL: 'http://plc:2582',
+      HANDLE_RESOLVERS: 'well-known:https',
+      SIGNUP_PDS: 'https://alpha.mine.test',
+      RATE_LIMITS: 'off',
+      EXTRA_CA_CERTS: '/https/ca.crt',
+      PRIVATE_ADDRESSES: 'on',
+    });
+    expect(s.volumes).toEqual(['grouphost-gh-data:/data', '/state/snowglobe/ca/ca.crt:/https/ca.crt:ro']);
+    expect(compose.volumes).toHaveProperty('grouphost-gh-data');
+    expect(s.healthcheck.test.join(' ')).toContain('http://127.0.0.1:2600/xrpc/_health');
+    // A first start gets the minute the release gives it before a failed check counts.
+    expect(s.healthcheck.start_period).toBe('60s');
+    expect(compose.services['grouphost-gh-console'].healthcheck.start_period).toBe('60s');
+    // The console is on the network, and asks the host where it listens.
+    const c = compose.services['grouphost-gh-console'];
+    expect(c.network_mode).toBeUndefined();
+    expect(c.environment).toMatchObject({ PORT: '2601', GROUP_HOST: 'http://grouphost-gh-dns:2600', ORIGIN: 'https://gh.mine.test' });
+    expect(c.depends_on).toEqual({ 'grouphost-gh': { condition: 'service_healthy' } });
+    const shared = Object.entries(compose.services).filter(([, x]: [string, any]) => x.network_mode).map(([n]) => n);
+    expect(shared.sort()).toEqual(['grouphost-gh', 'grouphost-gh2', 'grouphost-gh3', 'slingshot']);
+  });
+
+  it('sends the host\'s paths and every group\'s handle to the host, and the rest of its name to the console', () => {
+    const { files, compose, env } = render(ATGRP);
+    const conf = files['nginx/globe.conf'];
+    const gh = conf.slice(conf.indexOf('# gh: '), conf.indexOf('# gh2: '));
+    expect(gh).toContain('server_name gh.mine.test;\n    location / {\n        set $upstream http://grouphost-gh-console:2601;');
+    expect(gh).toContain('location ~ ^/(xrpc|oauth|\\.well-known|img)/ {\n        set $upstream http://grouphost-gh-dns:2600;');
+    expect(gh).toContain('server_name *.gh.mine.test;\n    location / {\n        set $upstream http://grouphost-gh-dns:2600;');
+    expect(files['nginx/page.inc']).toContain('set $gh_gh http://grouphost-gh-dns:2600;');
+    expect(files['leaf-names'].split('\n')).toEqual(expect.arrayContaining(['gh.mine.test', '*.gh.mine.test']));
+    expect(compose.services.nginx.networks.snowglobe.aliases).toContain('gh.mine.test');
+    expect(compose.services['relay-init-grouphosts'].environment.RELAY_HOSTS.split(' ')).toContain('gh.mine.test');
+    expect(compose.services['relay-init-grouphosts'].depends_on['grouphost-gh']).toEqual({ condition: 'service_healthy' });
+    expect(compose.services['relay-init'].depends_on).not.toHaveProperty('grouphost-gh');
+    expect(env.SG_SERVICES.split(' ')).toEqual(expect.arrayContaining(['grouphost-gh', 'grouphost-gh-console', 'grouphost-gh-dns']));
+    // The group hosts up names when it builds: the one from a checkout. The stack's image is pulled
+    // where published, else built, as the relay's is.
+    expect(env.SG_BUILDS).toBe('grouphost-gh2');
+  });
+
+  it('needs no source in the file or the environment', () => {
+    const { globe } = checkGlobe({ ...THREE, grouphosts: [{ name: 'gh', kind: 'atgrp' }] });
+    expect(withGroupHostSources(globe, {}).grouphosts).toEqual(globe.grouphosts);
+    expect(() => renderGlobe(globe, base, { stateDir: STATE })).not.toThrow();
+  });
+
+  const docker = spawnSync('docker', ['compose', 'version']).status === 0;
+  it.skipIf(!docker)('writes an atgrp group host docker compose reads', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'snowglobe-render-'));
+    writeFileSync(join(dir, 'snowglobe.yml'), `globe: mine\npds: [{name: alpha, image: spaces-alpha-20261124}]\ngrouphosts: [{name: gh, kind: atgrp}, {name: gh2, kind: atgrp, build: ${JSON.stringify(BUILD)}}]\n`);
+    const r = spawnSync('node', [join(ROOT, 'bin/snowglobe.mjs'), 'render', join(dir, 'snowglobe.yml'), '--out', join(dir, 'out')], { encoding: 'utf8', env: inDir(dir) });
+    expect(r.status, r.stderr).toBe(0);
+    const c = spawnSync('docker', ['compose', '-p', 'snowglobe-render-test', '--project-directory', ROOT, '-f', join(dir, 'out', 'compose.yml'), 'config', '--format', 'json'], { encoding: 'utf8', env: { ...process.env, ...SECRET_ENV } });
+    expect(c.status, c.stderr).toBe(0);
+    // The console runs the image the host builds from the checkout, by the name compose gives it.
+    const services = JSON.parse(c.stdout).services;
+    expect(services['grouphost-gh2'].image).toBe('snowglobe-render-test-grouphost-gh2');
+    expect(services['grouphost-gh2-console'].image).toBe('snowglobe-render-test-grouphost-gh2');
+    expect(services['grouphost-gh2-console'].build).toBeUndefined();
   });
 });
 
